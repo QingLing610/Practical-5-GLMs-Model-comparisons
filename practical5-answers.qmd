@@ -1,0 +1,401 @@
+---
+title: "Practical 5 Answers"
+subtitle: "GLMs: Model comparisons"
+author: "Your Name Here"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: false
+    link-external-newwindow: true
+    link-external-icon: true
+editor: source
+---
+
+## Getting started
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(easystats) # for geom_violinhalf function
+
+melanoma <- read_csv("data/melanoma.csv")
+```
+
+## The melanoma dataset
+
+### Question 1
+
+First let’s do our data cleaning and wrangling.
+
+```{r}
+#| label: data-cleaning
+
+melanoma <- read_csv("data/melanoma.csv") |>
+  mutate(
+    status = factor(status, levels = 1:3,
+                    labels = c("died - melanoma", "alive", "died - other")),
+    sex = factor(sex, levels = 0:1, labels = c("female", "male")),
+    ulcer = factor(ulcer, levels = 0:1, labels = c("not present", "present")),
+    status_binary = if_else(status == "died - melanoma", 1, 0)
+  )
+
+melanoma
+```
+
+> `status_binary` recodes the three-level `status` into a binary outcome.
+>
+> - `1` if the patient died from melanoma
+> - `0` otherwise, meaning either alive or died from another cause.
+>
+> This simplification/limitation should always be noted when discussing the analysis approach.
+
+### Question 2
+
+A few demonstrations of plot possibilities:
+
+```{r}
+#| label: explore-thickness
+
+melanoma |>
+  ggplot(aes(x = factor(status_binary, labels = c("no", "yes")), y = thickness)) +
+  geom_violinhalf(fill = "grey85") +
+  geom_jitter(width = 0.1, alpha = 0.4) +
+  scale_x_discrete("Died from melanoma?") +
+  scale_y_continuous("Tumour thickness (mm)") +
+  theme_bw()
+```
+
+```{r}
+#| label: explore-age
+
+melanoma |>
+  ggplot(aes(x = factor(status_binary, labels = c("no", "yes")), y = age)) +
+  geom_violinhalf(fill = "grey85") +
+  geom_jitter(width = 0.1, alpha = 0.4) +
+  scale_x_discrete("Died from melanoma?") +
+  scale_y_continuous("Age at operation (years)") +
+  theme_bw()
+```
+
+```{r}
+#| label: explore-sex
+
+melanoma |>
+  ggplot(aes(x = sex, fill = factor(status_binary, labels = c("no", "yes")))) +
+  geom_bar(position = "fill") +
+  scale_x_discrete("Sex") +
+  scale_y_continuous("Proportion") +
+  scale_fill_discrete("Died from melanoma?") +
+  theme_bw()
+```
+
+```{r}
+#| label: explore-ulcer
+
+melanoma |>
+  ggplot(aes(x = ulcer, fill = factor(status_binary, labels = c("no", "yes")))) +
+  geom_bar(position = "fill") +
+  scale_x_discrete("Ulceration") +
+  scale_y_continuous("Proportion") +
+  scale_fill_discrete("Died from melanoma?") +
+  theme_bw()
+```
+
+```{r}
+#| label: explore-year
+
+melanoma |>
+  ggplot(aes(x = factor(status_binary, labels = c("no", "yes")), y = year)) +
+  geom_boxplot() +
+  scale_x_discrete("Died from melanoma?") +
+  scale_y_continuous("Year of operation") +
+  theme_bw()
+```
+
+### Question 3
+
+> The plots suggest `thickness` and `ulcer` are the two predictors most clearly associated with `status_binary`. Patients who died from melanoma have visibly thicker tumours on average, and a noticeably larger share of the “died from melanoma” group has `ulcer = present`.
+>
+> There could also be an effect from biological `sex`, which shows a mild association. In contrast, `age` and `year` show little visible separation between the two outcome groups.
+>
+> This makes good clinical sense: tumour thickness (Breslow depth) and ulceration are two established prognostic markers for melanoma.
+
+## Fitting binary GLMs
+
+### Question 4
+
+```{r}
+#| label: binary-glm
+
+M3 <- glm(status_binary ~ thickness + sex + age,
+          data = melanoma,
+          family = binomial())
+
+summary(M3)
+```
+
+### Question 5
+
+```{r}
+#| label: thickness-coefficient
+
+coef(M3)["thickness"]
+```
+
+```{r}
+#| label: thickness-odds-ratio
+
+exp(coef(M3)["thickness"])
+```
+
+```{r}
+#| label: thickness-confidence-interval
+
+exp(confint(M3)["thickness", ])
+```
+
+> Interpretations:
+>
+> - **Log-odds scale:** the log-odds coefficient for `thickness` is `0.187`. Each additional 1 mm of tumour thickness increases the log-odds of dying from melanoma by `0.187`, holding `sex` and `age` fixed.
+>
+> - **Odds-ratio scale:** the odds ratio for `thickness` is `1.206`. Each additional 1 mm of tumour thickness is associated with about a **21% increase** in the odds of dying from melanoma, holding `sex` and `age` fixed.
+>
+> - The 95% confidence interval is approximately `1.08` to `1.36`. Since the interval does not include `1`, there is a statistically significant positive association at the 5% level.
+
+### Question 6
+
+```{r}
+#| label: age-test
+
+summary(M3)$coefficients["age", ]
+```
+
+> `age` has a test statistic of approximately `0.512` with a p-value of `0.609`.
+>
+> Since `p = 0.609 > 0.05`, the association between `age` and `status_binary` is not statistically significant at the 5% level.
+>
+> This is a **Wald test**, which compares the estimated coefficient with its standard error to assess the strength of association between the outcome and the covariate.
+
+## Likelihood ratio tests
+
+### Question 7
+
+The additional models can be fit in R using:
+
+```{r}
+#| label: nested-models
+
+M0 <- glm(status_binary ~ 1,
+          data = melanoma,
+          family = binomial())
+
+M1 <- glm(status_binary ~ thickness,
+          data = melanoma,
+          family = binomial())
+
+M2 <- glm(status_binary ~ thickness + sex,
+          data = melanoma,
+          family = binomial())
+```
+
+### Question 8
+
+```{r}
+#| label: likelihood-ratio-test
+
+anova(M0, M1, M2, M3, test = "LRT")
+```
+
+> **(i) Null and alternative hypotheses for each step:**
+>
+> - `M0` vs `M1`: Does adding `thickness` improve the intercept-only model?
+>
+> - `M1` vs `M2`: Does adding `sex` improve the model, given that `thickness` is already included?
+>
+> - `M2` vs `M3`: Does adding `age` improve the model, given that `thickness` and `sex` are already included?
+>
+> **(ii) Which steps are significant at α = 0.05?**
+>
+> Only the first comparison is statistically significant.
+>
+> Adding `thickness` to the null model produces a statistically significant improvement in fit (`χ² = 16.2227`, `df = 1`, `p = 5.632 × 10⁻⁵`).
+>
+> Adding `sex` is not significant (`p = 0.1204`), and adding `age` is also not significant (`p = 0.6076`).
+>
+> These results are consistent with the previous Wald test and the EDA plots.
+>
+> **(iii) Manual verification of the `M0` vs `M1` statistic:**
+
+```{r}
+#| label: manual-lrt
+
+logLik(M0)
+```
+
+```{r}
+logLik(M1)
+```
+
+```{r}
+D <- 2 * (as.numeric(logLik(M1)) - as.numeric(logLik(M0)))
+D
+```
+
+```{r}
+pchisq(D, df = 1, lower.tail = FALSE)
+```
+
+> This gives `D = 16.22268` and `p = 5.631574 × 10⁻⁵`, matching the `anova()` output.
+
+## AIC
+
+### Question 9
+
+```{r}
+#| label: aic-model
+
+M4 <- glm(status_binary ~ thickness + sex + age + ulcer,
+          data = melanoma,
+          family = binomial())
+```
+
+> We can create new models explicitly dropping the term that is not required. But there is a shortcut in R using `update`.
+>
+> The `M4` model with `thickness` removed can be created with:
+>
+> `M4_without_thickness <- update(M4, . ~ . - thickness)`
+>
+> If we choose not to save these intermediate models then the following code works.
+
+```{r}
+#| label: aic-step1
+
+aic_step1 <- list()
+
+# Reference AIC
+aic_step1$initial <- AIC(M4)
+
+# Starting from M4, try dropping each term
+aic_step1$thickness <- AIC(update(M4, . ~ . - thickness))
+aic_step1$sex <- AIC(update(M4, . ~ . - sex))
+aic_step1$age <- AIC(update(M4, . ~ . - age))
+aic_step1$ulcer <- AIC(update(M4, . ~ . - ulcer))
+
+aic_step1
+```
+
+> The AIC values are:
+>
+> - Full model: `220.31`
+> - Without `thickness`: `222.02`
+> - Without `sex`: `219.68`
+> - Without `age`: `218.46`
+> - Without `ulcer`: `231.45`
+>
+> Dropping `age` gives the lowest AIC (`218.46`), so we drop `age` and continue from `status_binary ~ thickness + sex + ulcer`.
+
+```{r}
+#| label: aic-step2
+
+model_after_step1 <- glm(
+  status_binary ~ thickness + sex + ulcer,
+  data = melanoma,
+  family = binomial()
+)
+
+aic_step2 <- list()
+
+aic_step2$initial <- AIC(model_after_step1)
+aic_step2$thickness <- AIC(update(model_after_step1, . ~ . - thickness))
+aic_step2$sex <- AIC(update(model_after_step1, . ~ . - sex))
+aic_step2$ulcer <- AIC(update(model_after_step1, . ~ . - ulcer))
+
+aic_step2
+```
+
+> Dropping `sex` yields the maximum improvement for AIC (`217.85`, vs. `218.46`). Continue from `status_binary ~ thickness + ulcer`.
+
+```{r}
+#| label: aic-step3
+
+model_after_step2 <- glm(
+  status_binary ~ thickness + ulcer,
+  data = melanoma,
+  family = binomial()
+)
+
+aic_step3 <- list()
+
+aic_step3$initial <- AIC(model_after_step2)
+aic_step3$thickness <- AIC(update(model_after_step2, . ~ . - thickness))
+aic_step3$ulcer <- AIC(update(model_after_step2, . ~ . - ulcer))
+
+aic_step3
+```
+
+> Both remaining removals increase AIC, so we stop here.
+>
+> The final model by manual backward AIC selection is `status_binary ~ thickness + ulcer`.
+
+### Question 10
+
+```{r}
+#| label: step-aic
+
+M_step <- step(M4, direction = "backward", trace = 1)
+```
+
+```{r}
+#| label: final-step-model
+
+summary(M_step)
+```
+
+> `step()` arrives at exactly the same final model, `status_binary ~ thickness + ulcer`, confirming the manual process above.
+
+### Question 11
+
+```{r}
+#| label: final-model
+
+final_model <- glm(status_binary ~ thickness + ulcer,
+                   data = melanoma,
+                   family = binomial())
+
+exp(coef(final_model))
+```
+
+```{r}
+#| label: final-model-ci
+
+exp(confint(final_model))
+```
+
+> **Warning — Statistical Associations**
+>
+> Recall that we are finding associations, so be careful not to interpret them as causation.
+>
+> **Tumour thickness:** For every extra 1 mm of tumour thickness at the time of surgery, a patient's odds of dying due to melanoma are about **14% higher** (odds ratio `1.14`, 95% CI `1.01` to `1.27`), after accounting for whether the tumour was ulcerated.
+>
+> **Ulceration:** Patients whose tumour was ulcerated had almost **4 times the odds** of dying from melanoma compared with patients with a non-ulcerated tumour of the same thickness (odds ratio `3.87`, 95% CI approximately `1.89` to `8.07`).
+>
+> **Limitations**
+>
+> - These are odds ratios, not risk ratios or survival probabilities. They should not be presented to a patient as if they mean “your risk of dying is 4x higher”; they are population-level statistical associations.
+>
+> - It is unclear how long patients were followed for. The outcome ignores how long each patient was followed. A more appropriate model would use time-to-event methods properly if follow-up time information were available.
+>
+> - Patients who died from unrelated causes are coded as `0` alongside true survivors. This may be misleading because they may have eventually died from melanoma, but the data does not reflect this.
+>
+> - This model was built and evaluated on the same set of 205 patients, with no separate validation set. Therefore, its predictive performance may not generalise as well to new patients as the in-sample statistics suggest.
+
+## References
+
+Gershenwald, Jeffrey E., Richard A. Scolyer, Kenneth R. Hess, et al. 2017. “Melanoma Staging: Evidence-Based Changes in the American Joint Committee on Cancer Eighth Edition Melanoma Staging Manual.” *CA: A Cancer Journal for Clinicians* 67 (6): 472–92. https://doi.org/10.3322/caac.21409.
