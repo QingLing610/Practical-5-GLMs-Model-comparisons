@@ -32,7 +32,7 @@ melanoma <- read_csv("data/melanoma.csv")
 
 ### Question 1
 
-First let’s do our data cleaning and wrangling.
+Load the data and prepare it for logistic regression. Recode status, sex and ulcer as properly labelled factors. Create a new variable called status_binary from status to record if the patient died from melanoma or not (this variable should be binary).
 
 ```{r}
 #| label: data-cleaning
@@ -51,14 +51,14 @@ melanoma
 
 > `status_binary` recodes the three-level `status` into a binary outcome.
 >
-> - `1` if the patient died from melanoma
-> - `0` otherwise, meaning either alive or died from another cause.
+> -   `1` if the patient died from melanoma
+> -   `0` otherwise, meaning either alive or died from another cause.
 >
 > This simplification/limitation should always be noted when discussing the analysis approach.
 
 ### Question 2
 
-A few demonstrations of plot possibilities:
+Produce exploratory plots examining the relationship between status_binary and each of the candidate predictors. Select appropriate plots for each variable type. Consider violin plots, bar charts, etc.
 
 ```{r}
 #| label: explore-thickness
@@ -121,6 +121,8 @@ melanoma |>
 
 ### Question 3
 
+Based on your plots, which predictors do you expect to be associated with status_binary? Do the relationships make clinical sense?
+
 > The plots suggest `thickness` and `ulcer` are the two predictors most clearly associated with `status_binary`. Patients who died from melanoma have visibly thicker tumours on average, and a noticeably larger share of the “died from melanoma” group has `ulcer = present`.
 >
 > There could also be an effect from biological `sex`, which shows a mild association. In contrast, `age` and `year` show little visible separation between the two outcome groups.
@@ -130,6 +132,15 @@ melanoma |>
 ## Fitting binary GLMs
 
 ### Question 4
+
+Fit the following logistic regression model, where (y_i) is the `status_binary` variable:
+
+$$
+M_3:\quad \operatorname{logit}(y_i)
+= \beta_0 + \beta_1\text{thickness}_i
++ \beta_2\text{sex}_i
++ \beta_3\text{age}_i
+$$
 
 ```{r}
 #| label: binary-glm
@@ -142,6 +153,8 @@ summary(M3)
 ```
 
 ### Question 5
+
+What are the estimated log-odds for thickness? Interpret this on the odds-ratio scale (exponentiate the coefficient and provide a confidence interval using confint()).
 
 ```{r}
 #| label: thickness-coefficient
@@ -163,13 +176,15 @@ exp(confint(M3)["thickness", ])
 
 > Interpretations:
 >
-> - **Log-odds scale:** the log-odds coefficient for `thickness` is `0.187`. Each additional 1 mm of tumour thickness increases the log-odds of dying from melanoma by `0.187`, holding `sex` and `age` fixed.
+> -   **Log-odds scale:** the log-odds coefficient for `thickness` is `0.187`. Each additional 1 mm of tumour thickness increases the log-odds of dying from melanoma by `0.187`, holding `sex` and `age` fixed.
 >
-> - **Odds-ratio scale:** the odds ratio for `thickness` is `1.206`. Each additional 1 mm of tumour thickness is associated with about a **21% increase** in the odds of dying from melanoma, holding `sex` and `age` fixed.
+> -   **Odds-ratio scale:** the odds ratio for `thickness` is `1.206`. Each additional 1 mm of tumour thickness is associated with about a **21% increase** in the odds of dying from melanoma, holding `sex` and `age` fixed.
 >
-> - The 95% confidence interval is approximately `1.08` to `1.36`. Since the interval does not include `1`, there is a statistically significant positive association at the 5% level.
+> -   The 95% confidence interval is approximately `1.08` to `1.36`. Since the interval does not include `1`, there is a statistically significant positive association at the 5% level.
 
 ### Question 6
+
+Is age a statistically significant predictor in M3 at the 5% level, adjusting for thickness and sex? What test is being used here?
 
 ```{r}
 #| label: age-test
@@ -187,7 +202,19 @@ summary(M3)$coefficients["age", ]
 
 ### Question 7
 
-The additional models can be fit in R using:
+Fit these further regression models.
+
+$$
+M_0: \operatorname{logit}(y_i) = \beta_0
+$$
+
+$$
+M_1: \operatorname{logit}(y_i) = \beta_0 + \beta_1 \text{thickness}_i
+$$
+
+$$
+M_2: \operatorname{logit}(y_i) = \beta_0 + \beta_1 \text{thickness}_i + \beta_2 \text{sex}_i
+$$
 
 ```{r}
 #| label: nested-models
@@ -207,6 +234,20 @@ M2 <- glm(status_binary ~ thickness + sex,
 
 ### Question 8
 
+The models $M_0 \subset M_1 \subset M_2 \subset M_3$ form a nested sequence. Use `anova()` with `test = "LRT"` to test each step of this sequence.
+
+i. For each step, state the null and alternative hypotheses.
+
+ii. Which predictors contribute a statistically significant improvement in fit at $\alpha = 0.05$?
+
+iii. The LRT statistic for comparing $M_k$ to $M_{k-1}$ is
+
+$$
+D = 2(\ell_{M_k} - \ell_{M_{k-1}}),
+$$
+
+where $\ell$ denotes the log-likelihood. Verify the test statistic for the $M_0$ vs $M_1$ comparison by extracting the log-likelihoods manually using `logLik()`.
+
 ```{r}
 #| label: likelihood-ratio-test
 
@@ -215,11 +256,11 @@ anova(M0, M1, M2, M3, test = "LRT")
 
 > **(i) Null and alternative hypotheses for each step:**
 >
-> - `M0` vs `M1`: Does adding `thickness` improve the intercept-only model?
+> -   `M0` vs `M1`: Does adding `thickness` improve the intercept-only model?
 >
-> - `M1` vs `M2`: Does adding `sex` improve the model, given that `thickness` is already included?
+> -   `M1` vs `M2`: Does adding `sex` improve the model, given that `thickness` is already included?
 >
-> - `M2` vs `M3`: Does adding `age` improve the model, given that `thickness` and `sex` are already included?
+> -   `M2` vs `M3`: Does adding `age` improve the model, given that `thickness` and `sex` are already included?
 >
 > **(ii) Which steps are significant at α = 0.05?**
 >
@@ -258,6 +299,19 @@ pchisq(D, df = 1, lower.tail = FALSE)
 
 ### Question 9
 
+Perform backward stepwise model selection with AIC manually, beginning with the following model. What is the final model? Does this differ from the previous choice?
+
+$$
+M_4:
+\operatorname{logit}(y_i)
+=
+\beta_0
++ \beta_1\,\texttt{thickness}_i
++ \beta_2\,\texttt{sex}_i
++ \beta_3\,\texttt{age}_i
++ \beta_4\,\texttt{ulcer}_i
+$$
+
 ```{r}
 #| label: aic-model
 
@@ -293,11 +347,11 @@ aic_step1
 
 > The AIC values are:
 >
-> - Full model: `220.31`
-> - Without `thickness`: `222.02`
-> - Without `sex`: `219.68`
-> - Without `age`: `218.46`
-> - Without `ulcer`: `231.45`
+> -   Full model: `220.31`
+> -   Without `thickness`: `222.02`
+> -   Without `sex`: `219.68`
+> -   Without `age`: `218.46`
+> -   Without `ulcer`: `231.45`
 >
 > Dropping `age` gives the lowest AIC (`218.46`), so we drop `age` and continue from `status_binary ~ thickness + sex + ulcer`.
 
@@ -346,6 +400,8 @@ aic_step3
 
 ### Question 10
 
+Repeat this process using the step() function.
+
 ```{r}
 #| label: step-aic
 
@@ -361,6 +417,8 @@ summary(M_step)
 > `step()` arrives at exactly the same final model, `status_binary ~ thickness + ulcer`, confirming the manual process above.
 
 ### Question 11
+
+For your final model, provide clinical interpretations of the estimated coefficients on the odds-ratio scale. Your interpretations should be written in language accessible to a clinician, not a statistician. Note any limitations that should be communicated with clinicians and/or patients.
 
 ```{r}
 #| label: final-model
@@ -388,13 +446,13 @@ exp(confint(final_model))
 >
 > **Limitations**
 >
-> - These are odds ratios, not risk ratios or survival probabilities. They should not be presented to a patient as if they mean “your risk of dying is 4x higher”; they are population-level statistical associations.
+> -   These are odds ratios, not risk ratios or survival probabilities. They should not be presented to a patient as if they mean “your risk of dying is 4x higher”; they are population-level statistical associations.
 >
-> - It is unclear how long patients were followed for. The outcome ignores how long each patient was followed. A more appropriate model would use time-to-event methods properly if follow-up time information were available.
+> -   It is unclear how long patients were followed for. The outcome ignores how long each patient was followed. A more appropriate model would use time-to-event methods properly if follow-up time information were available.
 >
-> - Patients who died from unrelated causes are coded as `0` alongside true survivors. This may be misleading because they may have eventually died from melanoma, but the data does not reflect this.
+> -   Patients who died from unrelated causes are coded as `0` alongside true survivors. This may be misleading because they may have eventually died from melanoma, but the data does not reflect this.
 >
-> - This model was built and evaluated on the same set of 205 patients, with no separate validation set. Therefore, its predictive performance may not generalise as well to new patients as the in-sample statistics suggest.
+> -   This model was built and evaluated on the same set of 205 patients, with no separate validation set. Therefore, its predictive performance may not generalise as well to new patients as the in-sample statistics suggest.
 
 ## References
 
